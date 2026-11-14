@@ -707,7 +707,11 @@ function showLandingView() {
     document.getElementById('view-landing').classList.remove('hidden');
     document.getElementById('view-student-app').classList.add('hidden');
     document.getElementById('view-admin-app').classList.add('hidden');
-    document.getElementById('landing-nav-links').classList.remove('hidden');
+    const navLinks = document.getElementById('landing-nav-links');
+    if (navLinks) {
+        navLinks.classList.remove('md:hidden');
+        navLinks.classList.add('hidden', 'md:flex');
+    }
     const mobileSubnav = document.getElementById('landing-mobile-subnav');
     if (mobileSubnav) mobileSubnav.classList.remove('hidden');
     document.getElementById('nav-guest-actions').classList.remove('hidden');
@@ -717,7 +721,11 @@ function showLandingView() {
 
 function enterRoleDashboard(user) {
     document.getElementById('view-landing').classList.add('hidden');
-    document.getElementById('landing-nav-links').classList.add('hidden');
+    const navLinks = document.getElementById('landing-nav-links');
+    if (navLinks) {
+        navLinks.classList.remove('md:flex');
+        navLinks.classList.add('hidden', 'md:hidden');
+    }
     const mobileSubnav = document.getElementById('landing-mobile-subnav');
     if (mobileSubnav) mobileSubnav.classList.add('hidden');
     document.getElementById('nav-guest-actions').classList.add('hidden');

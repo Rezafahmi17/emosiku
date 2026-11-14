@@ -113,6 +113,11 @@
             background: #cbd5e1;
             border-radius: 9999px;
         }
+        @media (max-width: 767px) {
+            #landing-nav-links {
+                display: none !important;
+            }
+        }
         @media (max-width: 640px) {
             input, select, textarea {
                 font-size: 16px !important;
@@ -206,12 +211,12 @@
         </div>
 
         <!-- Sub-Navigasi Mobile (Tampil di Smartphone Saat di Landing Page) -->
-        <div id="landing-mobile-subnav" class="md:hidden border-t border-slate-100 bg-slate-50/80 px-3.5 py-2 flex items-center justify-between gap-2 text-[11px] font-semibold text-slate-600 hc-card">
+        <div id="landing-mobile-subnav" class="md:hidden border-t border-slate-100 bg-slate-50/90 px-4 py-2 flex items-center justify-between gap-2 text-xs font-semibold text-slate-600 hc-card">
             <div class="flex items-center gap-4">
                 <button type="button" onclick="navigateTopMenu('fitur-utama')" class="hover:text-slate-900 transition">Modul Layanan</button>
-                <button type="button" onclick="navigateTopMenu('kamus-emosi')" class="text-teal-700 font-bold transition">Kamus Emosi</button>
+                <button type="button" onclick="navigateTopMenu('kamus-emosi')" class="text-teal-700 hover:text-teal-900 font-bold transition">Kamus Emosi</button>
             </div>
-            <button type="button" onclick="openEmergencyModal()" class="text-rose-700 font-bold">Bantuan Krisis</button>
+            <button type="button" onclick="openEmergencyModal()" class="text-rose-700 hover:text-rose-900 font-bold text-[11px] px-2.5 py-0.5 rounded bg-rose-50 border border-rose-200">Bantuan Krisis</button>
         </div>
     </header>
 
