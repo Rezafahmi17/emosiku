@@ -299,9 +299,21 @@ function getStatus() {
     };
 }
 
+let initPromise = null;
+
+function ensureInitialized() {
+    if (!initPromise) {
+        initPromise = initDatabase().catch((err) => {
+            console.warn('[DATABASE] Inisialisasi error:', err.message);
+        });
+    }
+    return initPromise;
+}
+
 module.exports = {
     DB_CONFIG,
     initDatabase,
+    ensureInitialized,
     ensureUserSchemaAndCleanDemo,
     getPool,
     getStatus,
