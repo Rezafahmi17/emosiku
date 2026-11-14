@@ -169,13 +169,10 @@
                     </svg>
                 </button>
 
-                <!-- Tombol Saat Belum Login -->
-                <div id="nav-guest-actions" class="flex items-center gap-1.5 sm:gap-2">
-                    <button type="button" onclick="showAuthModal('login')" class="px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-lg text-[11px] sm:text-xs font-semibold text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-50 border border-slate-300 transition whitespace-nowrap">
+                <!-- Tombol Saat Belum Login (Hanya Tampilkan Masuk) -->
+                <div id="nav-guest-actions" class="flex items-center">
+                    <button type="button" onclick="showAuthModal('login')" class="px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-lg text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 transition whitespace-nowrap shadow-2xs">
                         Masuk
-                    </button>
-                    <button type="button" onclick="showAuthModal('register')" class="px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-lg text-[11px] sm:text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 transition whitespace-nowrap">
-                        Daftar Akun
                     </button>
                 </div>
 
@@ -244,13 +241,10 @@
                             <strong>EMOSIKU</strong> dirancang untuk membantu pengguna mengenali spektrum emosi harian, mempraktikkan strategi regulasi emosi berbasis psikologi dan nilai akhlak, serta terhubung secara aman melalui layanan konsultasi terpadu.
                         </p>
 
-                        <!-- Tombol Pintas Masuk/Daftar Khusus Mobile (Agar Tidak Perlu Scroll Jauh) -->
-                        <div class="flex sm:hidden items-center gap-2.5 pt-1">
-                            <button type="button" onclick="scrollToHeroAuth('login')" class="ux-btn flex-1 py-2.5 px-4 rounded-xl bg-slate-900 text-white text-xs font-semibold text-center shadow-xs">
+                        <!-- Tombol Pintas Masuk Khusus Mobile -->
+                        <div class="flex sm:hidden items-center pt-1">
+                            <button type="button" onclick="scrollToHeroAuth('login')" class="ux-btn w-full py-2.5 px-4 rounded-xl bg-slate-900 text-white text-xs font-semibold text-center shadow-xs">
                                 Masuk ke Akun
-                            </button>
-                            <button type="button" onclick="scrollToHeroAuth('register')" class="ux-btn flex-1 py-2.5 px-4 rounded-xl bg-teal-700 text-white text-xs font-semibold text-center shadow-xs">
-                                Daftar Akun Baru
                             </button>
                         </div>
 
