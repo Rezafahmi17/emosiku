@@ -2,7 +2,7 @@
 // API HELPER & OFFLINE-SAFE FALLBACK CLIENT UNTUK EMOSIKU
 // =========================================================================
 
-const API_BASE_URL = window.location.origin.includes('localhost') || window.location.origin.includes('127.0.0.1')
+const API_BASE_URL = (window.location.protocol === 'http:' || window.location.protocol === 'https:')
     ? `${window.location.origin}/api`
     : 'http://localhost:5000/api';
 

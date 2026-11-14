@@ -38,15 +38,25 @@ const frontendPath = path.join(__dirname, '..', 'frontend');
 app.use(express.static(frontendPath));
 
 app.get('*', (req, res) => {
+    if (req.path.startsWith('/api')) {
+        return res.status(404).json({ success: false, message: 'Endpoint API tidak ditemukan.' });
+    }
     res.sendFile(path.join(frontendPath, 'index.html'));
 });
 
-initDatabase().then(() => {
-    app.listen(PORT, () => {
-        console.log('==========================================================');
-        console.log(`  EMOSIKU Server berjalan di: http://localhost:${PORT}`);
-        console.log(`  MySQL Target Port         : ${process.env.DB_PORT || 3307}`);
-        console.log('==========================================================');
+if (require.main === module || !process.env.VERCEL) {
+    initDatabase().then(() => {
+        app.listen(PORT, () => {
+            console.log('==========================================================');
+            console.log(`  EMOSIKU Server berjalan di: http://localhost:${PORT}`);
+            console.log(`  Database Status           : ${getStatus().engine}`);
+            console.log('==========================================================');
+        });
     });
-});
+} else {
+    // Di lingkungan Vercel Serverless Function
+    initDatabase().catch((err) => console.warn('Inisialisasi database serverless notice:', err.message));
+}
+
+module.exports = app;
 

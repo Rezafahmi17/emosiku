@@ -1,6 +1,7 @@
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 const mysql = require('mysql2/promise');
+const { Pool: PgPool } = require('pg');
 const fs = require('fs');
 const bcrypt = require('bcryptjs');
 
@@ -16,7 +17,8 @@ const DB_CONFIG = {
 };
 
 let pool = null;
-let isMySQLConnected = false;
+let isConnected = false;
+let dbEngine = 'none'; // 'postgres', 'mysql', 'fallback'
 
 const FALLBACK_FILE = path.join(__dirname, '..', 'database', 'local_fallback_db.json');
 
@@ -37,6 +39,43 @@ const DEMO_STUDENT_NAMES = [
     'Bima Pratama',
     'Alya Zahra'
 ];
+
+/**
+ * Wrapper PostgreSQL yang kompatibel dengan format query & pemanggilan MySQL pool
+ * Mengonversi placeholder ? menjadi $1, $2, dst. serta menyediakan insertId pada INSERT
+ */
+class PgPoolWrapper {
+    constructor(pgPool) {
+        this.pgPool = pgPool;
+    }
+
+    async query(sql, params = []) {
+        let paramIndex = 1;
+        let pgSql = sql.replace(/\?/g, () => `$${paramIndex++}`);
+
+        const isInsert = /^\s*INSERT\s+INTO/i.test(sql);
+        if (isInsert && !/RETURNING/i.test(pgSql)) {
+            pgSql += ' RETURNING id';
+        }
+
+        const res = await this.pgPool.query(pgSql, params || []);
+        const rows = res.rows || [];
+        const insertId = isInsert && rows.length > 0 ? (rows[0].id ?? null) : null;
+
+        const resultMeta = {
+            insertId,
+            affectedRows: res.rowCount,
+            rowCount: res.rowCount
+        };
+
+        Object.assign(rows, resultMeta);
+        return [rows, res.fields];
+    }
+
+    async end() {
+        return this.pgPool.end();
+    }
+}
 
 function getInitialSeedData() {
     const passwordAdmin = bcrypt.hashSync('admin123', 10);
@@ -79,7 +118,6 @@ function readFallbackDB() {
     try {
         const raw = fs.readFileSync(FALLBACK_FILE, 'utf8');
         const db = JSON.parse(raw);
-        // Bersihkan akun demo jika masih ada di file fallback
         const demoIds = new Set(
             (db.users || [])
                 .filter((u) => DEMO_USERNAMES.includes((u.username || '').toLowerCase()))
@@ -108,17 +146,30 @@ function writeFallbackDB(data) {
 }
 
 async function ensureUserSchemaAndCleanDemo(dbPool) {
-    // 1. Pastikan kolom avatar_url tersedia pada tabel users
+    if (dbEngine === 'postgres') {
+        try {
+            await dbPool.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT DEFAULT NULL');
+        } catch (e) {}
+
+        try {
+            await dbPool.query(
+                `DELETE FROM users WHERE LOWER(username) IN ('rani_xi', 'bima_x', 'alya_smp', 'rani@emosiku.id', 'bima@emosiku.id', 'alya@emosiku.id')`
+            );
+            await dbPool.query(
+                `DELETE FROM counseling_requests WHERE student_name IN ('Rani (Langit Senja)', 'Bima (Bintang Utara)', 'Alya (Pelangi Pagi)', 'Rani Putri', 'Bima Pratama', 'Alya Zahra')`
+            );
+        } catch (e) {}
+        return;
+    }
+
+    // Skema MySQL
     try {
         const [cols] = await dbPool.query("SHOW COLUMNS FROM users LIKE 'avatar_url'");
         if (cols.length === 0) {
             await dbPool.query('ALTER TABLE users ADD COLUMN avatar_url LONGTEXT DEFAULT NULL');
         }
-    } catch (e) {
-        // Abaikan jika sudah ada
-    }
+    } catch (e) {}
 
-    // 2. Pastikan akun Admin menggunakan email admin@emosiku.id
     try {
         const [adminByEmail] = await dbPool.query('SELECT id FROM users WHERE username = ?', ['admin@emosiku.id']);
         const [legacyAdmin] = await dbPool.query('SELECT id FROM users WHERE username = ?', ['pak_hadi_bk']);
@@ -137,7 +188,6 @@ async function ensureUserSchemaAndCleanDemo(dbPool) {
         console.warn('Info update admin:', e.message);
     }
 
-    // 3. Hapus seluruh data demo siswa (Rani, Bima, Alya) beserta log, jadwal konseling, dan chat demo mereka
     try {
         await dbPool.query(
             `DELETE FROM users WHERE LOWER(username) IN ('rani_xi', 'bima_x', 'alya_smp', 'rani@emosiku.id', 'bima@emosiku.id', 'alya@emosiku.id')`
@@ -151,6 +201,34 @@ async function ensureUserSchemaAndCleanDemo(dbPool) {
 }
 
 async function initDatabase() {
+    const postgresUrl =
+        process.env.DATABASE_URL ||
+        process.env.SUPABASE_DB_URL ||
+        process.env.POSTGRES_URL;
+
+    // 1. Prioritas Cloud / Supabase PostgreSQL (jika konfigurasi tersedia)
+    if (postgresUrl) {
+        try {
+            console.log('[DATABASE] Mencoba menghubungkan ke Supabase / PostgreSQL...');
+            const pgClient = new PgPool({
+                connectionString: postgresUrl,
+                ssl: { rejectUnauthorized: false },
+                connectionTimeoutMillis: 7000
+            });
+            await pgClient.query('SELECT 1');
+            pool = new PgPoolWrapper(pgClient);
+            isConnected = true;
+            dbEngine = 'postgres';
+            console.log('[DATABASE] Sukses terhubung ke Supabase (PostgreSQL Cloud)!');
+
+            await ensureUserSchemaAndCleanDemo(pool);
+            return;
+        } catch (pgErr) {
+            console.warn(`[DATABASE] Koneksi PostgreSQL / Supabase gagal: ${pgErr.message}`);
+        }
+    }
+
+    // 2. MySQL Lokal (Port 3307)
     try {
         const tempConn = await mysql.createConnection({
             host: DB_CONFIG.host,
@@ -166,9 +244,11 @@ async function initDatabase() {
         await tempConn.query(schemaSql);
         await tempConn.end();
 
-        pool = mysql.createPool(DB_CONFIG);
-        await pool.query('SELECT 1');
-        isMySQLConnected = true;
+        const mysqlPool = mysql.createPool(DB_CONFIG);
+        await mysqlPool.query('SELECT 1');
+        pool = mysqlPool;
+        isConnected = true;
+        dbEngine = 'mysql';
         console.log(`[DATABASE] Terhubung ke MySQL pada ${DB_CONFIG.host}:${DB_CONFIG.port} (Database: ${DB_CONFIG.database})`);
 
         await ensureUserSchemaAndCleanDemo(pool);
@@ -178,8 +258,9 @@ async function initDatabase() {
             await seedMySQLData(pool);
         }
     } catch (err) {
-        isMySQLConnected = false;
-        console.warn(`[DATABASE] MySQL di port ${DB_CONFIG.port} belum aktif (${err.message}).`);
+        isConnected = false;
+        dbEngine = 'fallback';
+        console.warn(`[DATABASE] MySQL di port ${DB_CONFIG.port} belum aktif (${err.message}). Menggunakan penyimpanan lokal.`);
         readFallbackDB();
     }
 }
@@ -201,12 +282,20 @@ function getPool() {
 }
 
 function getStatus() {
+    let engineLabel = 'Local Persistence Active';
+    if (isConnected) {
+        engineLabel = dbEngine === 'postgres'
+            ? 'Supabase (PostgreSQL Cloud Connected)'
+            : `MySQL (Port ${DB_CONFIG.port} Connected)`;
+    }
+
     return {
-        engine: isMySQLConnected ? 'MySQL (Port 3307 Connected)' : 'Local Persistence Active',
-        host: DB_CONFIG.host,
-        port: DB_CONFIG.port,
-        database: DB_CONFIG.database,
-        isMySQLConnected
+        engine: engineLabel,
+        host: dbEngine === 'postgres' ? 'Supabase Cloud' : DB_CONFIG.host,
+        port: dbEngine === 'postgres' ? 5432 : DB_CONFIG.port,
+        database: dbEngine === 'postgres' ? 'postgres' : DB_CONFIG.database,
+        isMySQLConnected: isConnected,
+        dbEngine
     };
 }
 
