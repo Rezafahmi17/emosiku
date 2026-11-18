@@ -2051,24 +2051,47 @@ async function deleteAdminUser(userId) {
 }
 
 function showAdminMobileConversationList() {
+  AppState.activeAdminStudentId = null;
+  AppState.activeAdminStudentInfo = null;
+  AppState.adminChatManuallyClosed = true;
+
   const listPanel = document.getElementById("admin-chat-list-panel");
   const roomPanel = document.getElementById("admin-chat-room-panel");
   if (listPanel && roomPanel) {
     listPanel.classList.remove("hidden");
-    listPanel.classList.add("flex");
+    listPanel.classList.add("flex", "lg:flex");
     roomPanel.classList.add("hidden");
     roomPanel.classList.remove("flex");
   }
+
+  const avatar = document.getElementById("admin-chat-student-avatar");
+  const nameEl = document.getElementById("admin-chat-student-name");
+  const metaEl = document.getElementById("admin-chat-student-meta");
+  const box = document.getElementById("admin-chat-messages-box");
+  if (avatar) avatar.textContent = "P";
+  if (nameEl) nameEl.textContent = "Pilih pengguna pada panel kiri";
+  if (metaEl)
+    metaEl.textContent =
+      "Klik salah satu nama pengguna di daftar untuk membuka ruang konsultasi";
+  if (box) {
+    box.innerHTML = `
+      <div class="text-center text-xs text-slate-400 my-12">
+        Silakan pilih salah satu pengguna pada panel Daftar Pengguna untuk melihat atau membalas pesan konsultasi.
+      </div>
+    `;
+  }
+
+  renderAdminConversationList();
 }
 
 function showAdminMobileChatRoom() {
   const listPanel = document.getElementById("admin-chat-list-panel");
   const roomPanel = document.getElementById("admin-chat-room-panel");
   if (listPanel && roomPanel) {
-    listPanel.classList.add("hidden");
+    listPanel.classList.add("hidden", "lg:flex");
     listPanel.classList.remove("flex");
     roomPanel.classList.remove("hidden");
-    roomPanel.classList.add("flex");
+    roomPanel.classList.add("flex", "lg:flex");
   }
 }
 
@@ -2116,6 +2139,7 @@ async function loadAdminConversations(silent = false) {
 
     if (
       !AppState.activeAdminStudentId &&
+      !AppState.adminChatManuallyClosed &&
       AppState.adminConversations.length > 0
     ) {
       selectAdminChatStudent(AppState.adminConversations[0].student_id, false);
@@ -2195,6 +2219,7 @@ function renderAdminConversationList() {
 
 async function selectAdminChatStudent(studentId, openMobileRoom = true) {
   AppState.activeAdminStudentId = studentId;
+  AppState.adminChatManuallyClosed = false;
   if (openMobileRoom) {
     showAdminMobileChatRoom();
   }
