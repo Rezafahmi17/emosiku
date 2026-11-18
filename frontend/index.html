@@ -7,6 +7,8 @@
       content="width=device-width, initial-scale=1.0, viewport-fit=cover"
     />
     <title>EMOSIKU — Platform Regulasi Emosi & Layanan Konseling</title>
+    <link rel="icon" type="image/png" href="./logo.png" />
+    <link rel="apple-touch-icon" href="./logo.png" />
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
       tailwind.config = {
@@ -169,11 +171,11 @@
           class="flex items-center gap-2.5 sm:gap-3 cursor-pointer shrink-0"
           onclick="handleLogoClick()"
         >
-          <div
-            class="w-8 h-8 sm:w-9 sm:h-9 rounded-lg bg-slate-900 flex items-center justify-center text-white font-bold text-xs tracking-widest shrink-0"
-          >
-            EM
-          </div>
+          <img
+            src="./logo.png"
+            alt="Logo EMOSIKU"
+            class="w-8 h-8 sm:w-9 sm:h-9 rounded-lg object-contain shrink-0 shadow-2xs"
+          />
           <div>
             <span
               class="font-bold text-sm sm:text-base tracking-tight text-slate-900 block leading-none hc-card"
@@ -3246,9 +3248,16 @@
       <div
         class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between gap-3 text-center sm:text-left"
       >
-        <div>
-          <strong class="text-slate-800 hc-card">EMOSIKU</strong> — Platform
-          Regulasi Emosi & Layanan Konseling.
+        <div class="flex items-center gap-2.5">
+          <img
+            src="./logo.png"
+            alt="Logo EMOSIKU"
+            class="w-6 h-6 rounded-md object-contain shrink-0"
+          />
+          <span>
+            <strong class="text-slate-800 hc-card">EMOSIKU</strong> — Platform
+            Regulasi Emosi & Layanan Konseling.
+          </span>
         </div>
         <div class="flex items-center gap-6">
           <button
