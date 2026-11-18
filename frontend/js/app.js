@@ -884,6 +884,8 @@ function showLandingView() {
   document.getElementById("view-landing").classList.remove("hidden");
   document.getElementById("view-student-app").classList.add("hidden");
   document.getElementById("view-admin-app").classList.add("hidden");
+  const siteFooter = document.getElementById("site-footer");
+  if (siteFooter) siteFooter.classList.remove("footer-with-bnav");
   const navLinks = document.getElementById("landing-nav-links");
   if (navLinks) {
     navLinks.classList.remove("md:hidden");
@@ -917,7 +919,10 @@ function enterRoleDashboard(user) {
     clearInterval(AppState.chatPollInterval);
   }
 
+  const siteFooter = document.getElementById("site-footer");
+
   if (user.role === "admin") {
+    if (siteFooter) siteFooter.classList.remove("footer-with-bnav");
     document.getElementById("view-student-app").classList.add("hidden");
     document.getElementById("view-admin-app").classList.remove("hidden");
     AppState.knownAdminPendingRequestIds = null;
@@ -935,6 +940,7 @@ function enterRoleDashboard(user) {
       }
     }, 2500);
   } else {
+    if (siteFooter) siteFooter.classList.add("footer-with-bnav");
     document.getElementById("view-admin-app").classList.add("hidden");
     document.getElementById("view-student-app").classList.remove("hidden");
     AppState.studentRequestStatusMap = null;
