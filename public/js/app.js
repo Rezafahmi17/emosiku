@@ -15,6 +15,10 @@ const AppState = {
   adminConversations: [],
   adminUsersList: [],
   adminUserStatusFilter: "ALL",
+  knownAdminPendingRequestIds: null,
+  lastAdminRequestsSignature: "",
+  studentRequestStatusMap: null,
+  lastStudentRequestsSignature: "",
   activeAdminStudentId: null,
   activeAdminStudentInfo: null,
   chatPollInterval: null,
@@ -916,29 +920,55 @@ function enterRoleDashboard(user) {
   if (user.role === "admin") {
     document.getElementById("view-student-app").classList.add("hidden");
     document.getElementById("view-admin-app").classList.remove("hidden");
+    AppState.knownAdminPendingRequestIds = null;
+    AppState.lastAdminRequestsSignature = "";
     switchAdminTab("chat");
     loadAdminConversations();
-    loadAdminDashboardData();
+    loadAdminDashboardData(false);
     loadAdminUsers(false);
     AppState.chatPollInterval = setInterval(() => {
       loadAdminConversations(true);
       loadAdminUsers(true);
+      loadAdminDashboardData(true);
       if (AppState.activeAdminStudentId) {
         loadAdminActiveChatMessages(AppState.activeAdminStudentId, true);
       }
-    }, 4000);
+    }, 2500);
   } else {
     document.getElementById("view-admin-app").classList.add("hidden");
     document.getElementById("view-student-app").classList.remove("hidden");
+    AppState.studentRequestStatusMap = null;
+    AppState.lastStudentRequestsSignature = "";
 
     switchStudentTab("beranda");
     loadAllStudentData();
 
     AppState.chatPollInterval = setInterval(() => {
       loadStudentChatMessages(true);
-    }, 4000);
+      loadStudentCounselingRequests(true);
+    }, 2500);
   }
 }
+
+function triggerRealtimeSyncOnFocus() {
+  if (!AppState.currentUser) return;
+  if (AppState.currentUser.role === "admin") {
+    loadAdminConversations(true);
+    loadAdminUsers(true);
+    loadAdminDashboardData(true);
+    if (AppState.activeAdminStudentId) {
+      loadAdminActiveChatMessages(AppState.activeAdminStudentId, true);
+    }
+  } else {
+    loadStudentChatMessages(true);
+    loadStudentCounselingRequests(true);
+  }
+}
+
+window.addEventListener("focus", triggerRealtimeSyncOnFocus);
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden) triggerRealtimeSyncOnFocus();
+});
 
 function switchStudentTab(tabName) {
   const tabs = ["beranda", "cek", "kamus", "tenang", "riwayat", "bk"];
@@ -1570,13 +1600,69 @@ async function deleteAllMyStudentData() {
 // -------------------------------------------------------------------------
 // 6. KONSULTASI LIVE CHAT & FORMULIR JANJI TEMU
 // -------------------------------------------------------------------------
-async function loadStudentCounselingRequests() {
+async function loadStudentCounselingRequests(silent = false) {
+  if (!AppState.currentUser || AppState.currentUser.role !== "siswa") return;
   try {
     const res = await window.EmosikuAPI.request("/counseling/my-requests");
     const deletedSet = getDeletedCounselingIds();
-    AppState.studentCounselingRequests = (res.requests || []).filter(
+    const fetchedRequests = (res.requests || []).filter(
       (r) => !deletedSet.has(Number(r.id)) && !isDemoStudentItem(r),
     );
+
+    // Deteksi perubahan status atau penghapusan oleh Super Admin secara real-time
+    if (AppState.studentRequestStatusMap !== null) {
+      const currentIds = new Set(fetchedRequests.map((r) => String(r.id)));
+
+      fetchedRequests.forEach((req) => {
+        const prev = AppState.studentRequestStatusMap[String(req.id)];
+        if (prev && prev.status !== req.status) {
+          if (req.status === "Dijadwalkan") {
+            showToast(
+              `Jadwal konseling Anda ("${req.topic}") telah DIJADWALKAN oleh Konselor!`,
+              "success",
+            );
+          } else if (req.status === "Selesai") {
+            showToast(
+              `Sesi konseling "${req.topic}" telah dikonfirmasi SELESAI oleh Konselor.`,
+              "info",
+            );
+          } else {
+            showToast(
+              `Status jadwal konseling "${req.topic}" diperbarui menjadi: ${req.status}.`,
+              "info",
+            );
+          }
+        }
+      });
+
+      Object.keys(AppState.studentRequestStatusMap).forEach((oldId) => {
+        if (!currentIds.has(String(oldId)) && !deletedSet.has(Number(oldId))) {
+          const oldReq = AppState.studentRequestStatusMap[oldId];
+          showToast(
+            `Jadwal konseling "${oldReq?.topic || "Tatap Muka"}" telah dihapus oleh Konselor.`,
+            "info",
+          );
+        }
+      });
+    }
+
+    const nextMap = {};
+    fetchedRequests.forEach((r) => {
+      nextMap[String(r.id)] = {
+        status: r.status,
+        topic: r.topic,
+        counselor_note: r.counselor_note || "",
+      };
+    });
+    AppState.studentRequestStatusMap = nextMap;
+    AppState.studentCounselingRequests = fetchedRequests;
+
+    const sig = JSON.stringify(fetchedRequests);
+    if (silent && sig === AppState.lastStudentRequestsSignature) {
+      return;
+    }
+    AppState.lastStudentRequestsSignature = sig;
+
     const container = document.getElementById("student-counseling-list");
     if (!container) return;
 
@@ -1611,12 +1697,15 @@ async function loadStudentCounselingRequests() {
       })
       .join("");
   } catch (err) {
-    console.warn("Load counseling requests error:", err);
+    if (!silent) console.warn("Load counseling requests error:", err);
   }
 }
 
 async function deleteStudentCounselingRequest(reqId) {
   markCounselingIdsDeleted([reqId]);
+  if (AppState.studentRequestStatusMap) {
+    delete AppState.studentRequestStatusMap[String(reqId)];
+  }
   try {
     await window.EmosikuAPI.request(`/counseling/${reqId}`, {
       method: "DELETE",
@@ -1625,7 +1714,7 @@ async function deleteStudentCounselingRequest(reqId) {
     // Tetap hapus dari tampilan meskipun server belum di-restart
   }
   showToast("Jadwal konseling berhasil dihapus.", "info");
-  await loadStudentCounselingRequests();
+  await loadStudentCounselingRequests(false);
 }
 
 async function submitCounselingRequest(event) {
@@ -1649,11 +1738,19 @@ async function submitCounselingRequest(event) {
     });
     document.getElementById("bk-free-time").value = "";
     document.getElementById("bk-description").value = "";
+    if (res.request && AppState.studentRequestStatusMap) {
+      AppState.studentRequestStatusMap[String(res.request.id)] = {
+        status: res.request.status || "Menunggu",
+        topic: res.request.topic || topic,
+        counselor_note: "",
+      };
+    }
     showToast(
-      res.message || "Permintaan jadwal konseling terkirim.",
+      res.message ||
+        "Permintaan jadwal konseling berhasil dikirim dan menunggu konfirmasi Konselor.",
       "success",
     );
-    await loadStudentCounselingRequests();
+    await loadStudentCounselingRequests(false);
   } catch (error) {
     showToast(error.message || "Gagal mengirim formulir konseling.", "error");
   }
@@ -2316,7 +2413,7 @@ async function sendAdminChatMessage(event) {
 }
 
 // DASBOR AGREGAT & DAFTAR PERMINTAAN KONSELING
-async function loadAdminDashboardData() {
+async function loadAdminDashboardData(silent = false) {
   if (!AppState.currentUser || AppState.currentUser.role !== "admin") return;
   const classSelectEl = document.getElementById("admin-class-filter");
   const classFilter = classSelectEl?.value || "ALL";
@@ -2342,6 +2439,41 @@ async function loadAdminDashboardData() {
           class_code: ov.class_code || r.class_code,
         };
       });
+
+    // Hitung & beri notifikasi permintaan jadwal konseling baru yang berstatus Menunggu
+    const pendingRequests = cleanRequests.filter(
+      (r) => (r.status || "Menunggu") === "Menunggu",
+    );
+    const reqBadge = document.getElementById("admin-pending-requests-badge");
+    if (reqBadge) {
+      reqBadge.textContent = pendingRequests.length;
+      if (pendingRequests.length > 0) reqBadge.classList.remove("hidden");
+      else reqBadge.classList.add("hidden");
+    }
+
+    const reqBanner = document.getElementById("admin-pending-counseling-banner");
+    const reqBannerCount = document.getElementById(
+      "admin-pending-counseling-count",
+    );
+    if (reqBanner && reqBannerCount) {
+      reqBannerCount.textContent = pendingRequests.length;
+      if (pendingRequests.length > 0) reqBanner.classList.remove("hidden");
+      else reqBanner.classList.add("hidden");
+    }
+
+    if (AppState.knownAdminPendingRequestIds !== null) {
+      pendingRequests.forEach((r) => {
+        if (!AppState.knownAdminPendingRequestIds.has(Number(r.id))) {
+          showToast(
+            `Permintaan jadwal konseling baru dari ${r.student_name} (${r.topic})`,
+            "info",
+          );
+        }
+      });
+    }
+    AppState.knownAdminPendingRequestIds = new Set(
+      pendingRequests.map((r) => Number(r.id)),
+    );
 
     // Hitung partisipan riil (tanpa akun demo)
     const realStudentCount =
@@ -2425,20 +2557,32 @@ async function loadAdminDashboardData() {
       .join("");
 
     AppState.adminCounselingRequests = cleanRequests;
+    const reqSig = JSON.stringify(cleanRequests);
+    if (silent && reqSig === AppState.lastAdminRequestsSignature) {
+      return;
+    }
+    AppState.lastAdminRequestsSignature = reqSig;
+
     const reqListEl = document.getElementById("admin-counseling-requests-list");
     if (reqListEl) {
       if (cleanRequests.length === 0) {
         reqListEl.innerHTML = `<p class="text-xs text-slate-400">Belum ada permintaan jadwal konseling dari pengguna.</p>`;
       } else {
         reqListEl.innerHTML = cleanRequests
-          .map(
-            (r) => `
+          .map((r) => {
+            const stBadge =
+              r.status === "Dijadwalkan"
+                ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                : r.status === "Selesai"
+                  ? "bg-slate-100 text-slate-700 border-slate-200"
+                  : "bg-amber-50 text-amber-800 border-amber-200";
+            return `
                     <div class="p-5 rounded-xl bg-slate-50 border border-slate-200/80 flex flex-col lg:flex-row lg:items-center justify-between gap-4 hc-card">
                         <div class="space-y-1">
                             <div class="flex flex-wrap items-center gap-2">
                                 <span class="font-bold text-sm text-slate-900 hc-card">${escapeHtml(r.student_name)}</span>
                                 <span class="text-[11px] font-semibold px-2 py-0.5 rounded bg-white border border-slate-200 text-slate-700">${escapeHtml(r.class_code)}</span>
-                                <span class="text-[11px] font-semibold px-2 py-0.5 rounded bg-teal-50 text-teal-800 border border-teal-200">${r.status}</span>
+                                <span class="text-[11px] font-semibold px-2 py-0.5 rounded border ${stBadge}">${r.status}</span>
                             </div>
                             <p class="text-xs text-slate-600 hc-text-muted"><strong>Topik:</strong> ${escapeHtml(r.topic)} • <strong>Waktu Luang:</strong> ${escapeHtml(r.free_time)}</p>
                             ${r.description ? `<p class="text-xs text-slate-500 italic hc-text-muted">"${escapeHtml(r.description)}"</p>` : ""}
@@ -2458,13 +2602,13 @@ async function loadAdminDashboardData() {
                             </button>
                         </div>
                     </div>
-                `,
-          )
+                `;
+          })
           .join("");
       }
     }
   } catch (err) {
-    console.warn("Admin dashboard load error:", err);
+    if (!silent) console.warn("Admin dashboard load error:", err);
   }
 }
 

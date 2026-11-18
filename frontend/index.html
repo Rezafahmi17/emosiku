@@ -2241,9 +2241,14 @@
               type="button"
               onclick="switchAdminTab('requests')"
               id="admin-tab-btn-requests"
-              class="px-2.5 sm:px-4 py-2 rounded-lg text-[11px] sm:text-xs font-medium text-slate-300 hover:text-white transition text-center truncate"
+              class="px-2.5 sm:px-4 py-2 rounded-lg text-[11px] sm:text-xs font-medium text-slate-300 hover:text-white transition flex items-center justify-center gap-1.5"
             >
-              Jadwal Konseling
+              <span class="truncate">Jadwal Konseling</span>
+              <span
+                id="admin-pending-requests-badge"
+                class="hidden px-1.5 py-0.5 text-[10px] rounded bg-teal-500 text-slate-950 font-bold shrink-0"
+                >0</span
+              >
             </button>
           </div>
         </div>
@@ -2265,6 +2270,26 @@
             class="px-3.5 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold transition shrink-0 text-center"
           >
             Tinjau & Konfirmasi Akun →
+          </button>
+        </div>
+
+        <!-- Banner Pemberitahuan Permintaan Jadwal Konseling Baru -->
+        <div
+          id="admin-pending-counseling-banner"
+          class="hidden p-4 rounded-xl bg-teal-50 border border-teal-200/90 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hc-card"
+        >
+          <div class="flex items-start sm:items-center gap-3">
+            <span class="w-2.5 h-2.5 rounded-full bg-teal-600 mt-1 sm:mt-0 shrink-0"></span>
+            <p class="text-xs text-teal-950 leading-relaxed hc-card">
+              Terdapat <strong id="admin-pending-counseling-count">1</strong> permintaan jadwal konseling tatap muka berstatus <strong>Menunggu</strong> yang perlu ditindaklanjuti.
+            </p>
+          </div>
+          <button
+            type="button"
+            onclick="switchAdminTab('requests')"
+            class="px-3.5 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold transition shrink-0 text-center"
+          >
+            Lihat Jadwal Konseling →
           </button>
         </div>
 
