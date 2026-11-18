@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS users (
     class_code VARCHAR(50) DEFAULT 'Umum',
     avatar_color VARCHAR(30) DEFAULT '#0f172a',
     avatar_url TEXT DEFAULT NULL,
+    account_status VARCHAR(20) DEFAULT 'approved',
     agreed_consent SMALLINT DEFAULT 1,
     created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
 );

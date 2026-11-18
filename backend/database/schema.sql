@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS users (
     class_code VARCHAR(30) DEFAULT 'Umum' COMMENT 'Kode Kelas atau Kelompok',
     avatar_color VARCHAR(30) DEFAULT '#0f172a',
     avatar_url LONGTEXT DEFAULT NULL COMMENT 'Foto profil pengguna (Data URL / URL)',
+    account_status VARCHAR(20) DEFAULT 'approved' COMMENT 'Status verifikasi: pending, approved, rejected',
     agreed_consent TINYINT(1) DEFAULT 1 COMMENT 'Persetujuan penggunaan & privasi data',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

@@ -16,14 +16,14 @@ router.get('/admin/conversations', verifyAdmin, async (req, res) => {
             await ensureUserSchemaAndCleanDemo(pool);
 
             const [uRows] = await pool.query(
-                "SELECT id, username, alias_name, jenjang, class_code, avatar_color, avatar_url, created_at FROM users WHERE role = 'siswa' ORDER BY created_at DESC"
+                "SELECT id, username, alias_name, jenjang, class_code, avatar_color, avatar_url, account_status, created_at FROM users WHERE role = 'siswa' AND (account_status IS NULL OR account_status = 'approved') ORDER BY created_at DESC"
             );
             const [mRows] = await pool.query('SELECT * FROM chat_messages ORDER BY created_at ASC');
             students = uRows;
             messages = mRows;
         } else {
             const db = readFallbackDB();
-            students = db.users.filter((u) => u.role === 'siswa');
+            students = db.users.filter((u) => u.role === 'siswa' && (!u.account_status || u.account_status === 'approved'));
             messages = db.chat_messages.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
         }
 
