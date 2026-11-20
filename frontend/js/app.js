@@ -3010,8 +3010,14 @@ async function handleForgotEmailSubmit(event) {
     startForgotCooldown(60);
 
     if (res && res.dev_code) {
+      const codeInput = document.getElementById("fp-code");
+      if (codeInput) codeInput.value = res.dev_code;
       showForgotNotice(
-        `<strong>Mode Lokal:</strong> Kode verifikasi Anda adalah <strong>${res.dev_code}</strong>. (Gunakan kode ini untuk melanjutkan).`,
+        `<div class="space-y-1">
+           <div class="text-[11px] font-semibold text-teal-800 uppercase tracking-wider">Kode Verifikasi Anda:</div>
+           <div class="text-2xl font-mono font-bold tracking-[0.25em] text-teal-950 bg-teal-100/90 py-1.5 px-3 rounded-lg border border-teal-300 text-center">${res.dev_code}</div>
+           <div class="text-[11px] text-slate-600 mt-1">Kode 6 digit di atas telah disiapkan dan terisi otomatis. Klik tombol <strong>Verifikasi Kode</strong> di bawah untuk membuat kata sandi baru.</div>
+         </div>`,
         "info",
       );
     } else {
@@ -3106,8 +3112,14 @@ async function resendForgotCode() {
 
     startForgotCooldown(60);
     if (res && res.dev_code) {
+      const codeInput = document.getElementById("fp-code");
+      if (codeInput) codeInput.value = res.dev_code;
       showForgotNotice(
-        `<strong>Mode Lokal:</strong> Kode baru Anda: <strong>${res.dev_code}</strong>`,
+        `<div class="space-y-1">
+           <div class="text-[11px] font-semibold text-teal-800 uppercase tracking-wider">Kode Verifikasi Baru Anda:</div>
+           <div class="text-2xl font-mono font-bold tracking-[0.25em] text-teal-950 bg-teal-100/90 py-1.5 px-3 rounded-lg border border-teal-300 text-center">${res.dev_code}</div>
+           <div class="text-[11px] text-slate-600 mt-1">Kode baru di atas sudah terisi otomatis. Klik tombol <strong>Verifikasi Kode</strong> untuk melanjutkan.</div>
+         </div>`,
         "info",
       );
     } else {

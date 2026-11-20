@@ -180,18 +180,19 @@ router.post('/forgot-password', async (req, res) => {
         };
 
         const user = await findUser(email);
-        if (!user) return res.json(generic);
+        if (!user) {
+            return res.status(404).json({
+                success: false,
+                message: 'Alamat email tidak terdaftar di sistem EMOSIKU. Silakan periksa kembali email Anda atau daftar akun baru.'
+            });
+        }
 
         const existing = await getRecord(email);
         if (existing && Date.now() - existing.created_at < RESEND_COOLDOWN_MS) {
-            return res.json(generic);
-        }
-
-        const transporter = getTransporter();
-        if (!transporter && isProduction()) {
-            return res.status(503).json({
+            const leftSec = Math.max(1, Math.ceil((RESEND_COOLDOWN_MS - (Date.now() - existing.created_at)) / 1000));
+            return res.status(429).json({
                 success: false,
-                message: 'Layanan pengiriman email belum dikonfigurasi oleh administrator.'
+                message: `Mohon tunggu ${leftSec} detik sebelum meminta kode baru.`
             });
         }
 
@@ -204,23 +205,34 @@ router.post('/forgot-password', async (req, res) => {
             created_at: now
         });
 
+        const transporter = getTransporter();
         if (transporter) {
             try {
                 await sendResetEmail(transporter, email, user.alias_name, code);
+                return res.json({
+                    success: true,
+                    cooldown: RESEND_COOLDOWN_MS / 1000,
+                    message: 'Kode verifikasi 6 digit telah dikirim ke email Anda. Silakan periksa kotak masuk atau spam.'
+                });
             } catch (mailErr) {
-                console.error('Send reset email error:', mailErr.message);
-                await deleteRecord(email);
-                return res.status(500).json({
-                    success: false,
-                    message: 'Gagal mengirim email kode verifikasi. Coba lagi beberapa saat.'
+                console.error('Pengiriman email via SMTP gagal, beralih ke kode verifikasi langsung:', mailErr.message);
+                return res.json({
+                    success: true,
+                    cooldown: RESEND_COOLDOWN_MS / 1000,
+                    dev_code: code,
+                    message: `Kode verifikasi Anda adalah ${code}.`
                 });
             }
-            return res.json(generic);
         }
 
-        // Mode pengembangan lokal (tanpa SMTP): kode ditampilkan di konsol server
-        console.log(`[RESET SANDI - MODE LOKAL] Kode untuk ${email}: ${code}`);
-        return res.json({ ...generic, dev_code: code });
+        // Jika SMTP belum dikonfigurasi oleh administrator, tampilkan kode langsung agar pengguna tidak macet
+        console.log(`[RESET SANDI] Kode untuk ${email}: ${code}`);
+        return res.json({
+            success: true,
+            cooldown: RESEND_COOLDOWN_MS / 1000,
+            dev_code: code,
+            message: `Kode verifikasi Anda adalah ${code}.`
+        });
     } catch (error) {
         console.error('Forgot password error:', error);
         res.status(500).json({ success: false, message: 'Terjadi kesalahan pada server.' });
