@@ -1,11 +1,11 @@
 const express = require('express');
 const { getPool, getStatus, ensureUserSchemaAndCleanDemo, readFallbackDB, writeFallbackDB } = require('../config/db');
-const { verifyToken, verifyAdmin } = require('../middleware/authMiddleware');
+const { verifyToken, verifyStaff, isStaffRole } = require('../middleware/authMiddleware');
 
 const router = express.Router();
 
 // GET /api/chat/admin/conversations - Daftar seluruh pengguna agar Admin dapat memilih ruang chat
-router.get('/admin/conversations', verifyAdmin, async (req, res) => {
+router.get('/admin/conversations', verifyStaff, async (req, res) => {
     try {
         const dbStatus = getStatus();
         let students = [];
@@ -69,7 +69,7 @@ router.get('/messages/:studentId', verifyToken, async (req, res) => {
         const requestedStudentId = parseInt(req.params.studentId, 10);
         const currentUser = req.user;
 
-        if (currentUser.role !== 'admin' && currentUser.id !== requestedStudentId) {
+        if (!isStaffRole(currentUser.role) && currentUser.id !== requestedStudentId) {
             return res.status(403).json({
                 success: false,
                 message: 'Anda hanya dapat melihat ruang konsultasi Anda sendiri.'
@@ -82,7 +82,7 @@ router.get('/messages/:studentId', verifyToken, async (req, res) => {
 
         if (dbStatus.isMySQLConnected) {
             const pool = getPool();
-            if (currentUser.role === 'admin') {
+            if (isStaffRole(currentUser.role)) {
                 await pool.query(
                     "UPDATE chat_messages SET is_read = 1 WHERE student_id = ? AND sender_role = 'siswa'",
                     [requestedStudentId]
@@ -110,7 +110,7 @@ router.get('/messages/:studentId', verifyToken, async (req, res) => {
             let updated = false;
             db.chat_messages.forEach((m) => {
                 if (m.student_id === requestedStudentId) {
-                    if (currentUser.role === 'admin' && m.sender_role === 'siswa' && !m.is_read) {
+                    if (isStaffRole(currentUser.role) && m.sender_role === 'siswa' && !m.is_read) {
                         m.is_read = 1;
                         updated = true;
                     } else if (currentUser.role === 'siswa' && m.sender_role === 'admin' && !m.is_read) {
@@ -162,7 +162,8 @@ router.post('/send', verifyToken, async (req, res) => {
             });
         }
 
-        const targetStudentId = currentUser.role === 'admin'
+        const senderRole = isStaffRole(currentUser.role) ? 'admin' : 'siswa';
+        const targetStudentId = isStaffRole(currentUser.role)
             ? parseInt(student_id, 10)
             : currentUser.id;
 
@@ -181,13 +182,13 @@ router.post('/send', verifyToken, async (req, res) => {
             const [result] = await pool.query(
                 `INSERT INTO chat_messages (student_id, sender_id, sender_role, message, is_read)
                  VALUES (?, ?, ?, ?, 0)`,
-                [targetStudentId, currentUser.id, currentUser.role, message.trim()]
+                [targetStudentId, currentUser.id, senderRole, message.trim()]
             );
             newMessage = {
                 id: result.insertId,
                 student_id: targetStudentId,
                 sender_id: currentUser.id,
-                sender_role: currentUser.role,
+                sender_role: senderRole,
                 message: message.trim(),
                 is_read: 0,
                 created_at: new Date().toISOString()
@@ -199,7 +200,7 @@ router.post('/send', verifyToken, async (req, res) => {
                 id: newId,
                 student_id: targetStudentId,
                 sender_id: currentUser.id,
-                sender_role: currentUser.role,
+                sender_role: senderRole,
                 message: message.trim(),
                 is_read: 0,
                 created_at: new Date().toISOString()

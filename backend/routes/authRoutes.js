@@ -33,8 +33,8 @@ router.post('/register', async (req, res) => {
 
         const passwordHash = await bcrypt.hash(password, 10);
         const randomColor = AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)];
-        const validRole = role === 'admin' ? 'admin' : 'siswa';
-        const initialStatus = validRole === 'admin' ? 'approved' : 'pending';
+        const validRole = role === 'konselor' ? 'konselor' : 'siswa';
+        const initialStatus = 'pending';
 
         const dbStatus = getStatus();
         if (dbStatus.isMySQLConnected) {
@@ -296,6 +296,21 @@ router.post('/login', async (req, res) => {
             });
         }
 
+        // Pemisahan portal login: Siswa vs Konselor / Super Admin
+        const portal = String(req.body.portal || '').toLowerCase();
+        if (portal === 'siswa' && userRow.role !== 'siswa') {
+            return res.status(403).json({
+                success: false,
+                message: 'Akun ini terdaftar sebagai Konselor / Super Admin. Silakan masuk melalui Portal Konselor.'
+            });
+        }
+        if (portal === 'konselor' && userRow.role === 'siswa') {
+            return res.status(403).json({
+                success: false,
+                message: 'Akun ini terdaftar sebagai Siswa. Silakan masuk melalui Portal Siswa.'
+            });
+        }
+
         // Cek status persetujuan akun oleh Super Admin (untuk akun non-admin)
         if (userRow.role !== 'admin') {
             const accountStatus = (userRow.account_status || 'approved').toLowerCase();
@@ -359,14 +374,14 @@ router.get('/admin/users', verifyAdmin, async (req, res) => {
             const [rows] = await pool.query(
                 `SELECT id, username, alias_name, full_name, role, jenjang, class_code, avatar_color, avatar_url, account_status, created_at
                  FROM users
-                 WHERE role = 'siswa'
+                 WHERE role IN ('siswa', 'konselor')
                  ORDER BY created_at DESC`
             );
             rawUsers = rows;
         } else {
             const db = readFallbackDB();
             rawUsers = db.users
-                .filter((u) => u.role === 'siswa')
+                .filter((u) => ['siswa', 'konselor'].includes(u.role))
                 .sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
         }
 
@@ -466,11 +481,11 @@ router.post('/admin/users/approve-all', verifyAdmin, async (req, res) => {
         if (dbStatus.isMySQLConnected) {
             const pool = getPool();
             await ensureUserSchemaAndCleanDemo(pool);
-            await pool.query("UPDATE users SET account_status = 'approved' WHERE role = 'siswa' AND account_status = 'pending'");
+            await pool.query("UPDATE users SET account_status = 'approved' WHERE role IN ('siswa', 'konselor') AND account_status = 'pending'");
         } else {
             const db = readFallbackDB();
             db.users.forEach((u) => {
-                if (u.role === 'siswa' && (u.account_status || 'approved') === 'pending') {
+                if (u.role !== 'admin' && (u.account_status || 'approved') === 'pending') {
                     u.account_status = 'approved';
                 }
             });

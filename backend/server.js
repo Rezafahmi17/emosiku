@@ -6,6 +6,7 @@ const cors = require("cors");
 const fs = require("fs");
 const { initDatabase, ensureInitialized, getStatus } = require("./config/db");
 const authRoutes = require("./routes/authRoutes");
+const passwordRoutes = require("./routes/passwordRoutes");
 const emotionRoutes = require("./routes/emotionRoutes");
 const journalRoutes = require("./routes/journalRoutes");
 const counselingRoutes = require("./routes/counselingRoutes");
@@ -39,6 +40,7 @@ app.get("/api/status", (req, res) => {
 });
 
 app.use("/api/auth", authRoutes);
+app.use("/api/auth", passwordRoutes);
 app.use("/api/emotions", emotionRoutes);
 app.use("/api/journals", journalRoutes);
 app.use("/api/counseling", counselingRoutes);
@@ -64,7 +66,7 @@ app.get("*", (req, res) => {
   res.status(200).send("EMOSIKU Application Server");
 });
 
-if (require.main === module || !process.env.VERCEL) {
+if (require.main === module) {
   initDatabase().then(() => {
     app.listen(PORT, () => {
       console.log("==========================================================");

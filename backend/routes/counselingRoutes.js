@@ -1,6 +1,6 @@
 const express = require('express');
 const { getPool, getStatus, ensureUserSchemaAndCleanDemo, readFallbackDB, writeFallbackDB } = require('../config/db');
-const { verifyToken, verifyAdmin } = require('../middleware/authMiddleware');
+const { verifyToken, verifyStaff } = require('../middleware/authMiddleware');
 
 const router = express.Router();
 
@@ -108,7 +108,7 @@ router.delete('/:id', verifyToken, async (req, res) => {
     try {
         const reqId = parseInt(req.params.id, 10);
         const userId = req.user.id;
-        const isAdmin = req.user.role === 'admin';
+        const isAdmin = ['admin', 'konselor'].includes(req.user.role);
         const dbStatus = getStatus();
 
         if (dbStatus.isMySQLConnected) {
@@ -137,7 +137,7 @@ router.delete('/:id', verifyToken, async (req, res) => {
 });
 
 // GET /api/counseling/admin/dashboard - Dasbor Agregat & Anonim untuk Admin / Konselor
-router.get('/admin/dashboard', verifyAdmin, async (req, res) => {
+router.get('/admin/dashboard', verifyStaff, async (req, res) => {
     try {
         const { classFilter = 'ALL' } = req.query;
         const dbStatus = getStatus();
@@ -241,7 +241,7 @@ router.get('/admin/dashboard', verifyAdmin, async (req, res) => {
 });
 
 // PATCH /api/counseling/admin/:id - Admin memperbarui status & catatan tindak lanjut konseling
-router.patch('/admin/:id', verifyAdmin, async (req, res) => {
+router.patch('/admin/:id', verifyStaff, async (req, res) => {
     try {
         const reqId = parseInt(req.params.id, 10);
         const { status, counselor_note = '' } = req.body;
@@ -274,7 +274,7 @@ router.patch('/admin/:id', verifyAdmin, async (req, res) => {
 });
 
 // DELETE /api/counseling/admin/clear/all - Admin menghapus seluruh daftar permintaan konseling
-router.delete('/admin/clear/all', verifyAdmin, async (req, res) => {
+router.delete('/admin/clear/all', verifyStaff, async (req, res) => {
     try {
         const dbStatus = getStatus();
         if (dbStatus.isMySQLConnected) {
@@ -297,7 +297,7 @@ router.delete('/admin/clear/all', verifyAdmin, async (req, res) => {
 });
 
 // DELETE /api/counseling/admin/:id - Admin menghapus satu permintaan jadwal konseling
-router.delete('/admin/:id', verifyAdmin, async (req, res) => {
+router.delete('/admin/:id', verifyStaff, async (req, res) => {
     try {
         const reqId = parseInt(req.params.id, 10);
         const dbStatus = getStatus();

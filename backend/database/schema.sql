@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS users (
     password_hash VARCHAR(255) NOT NULL,
     alias_name VARCHAR(100) NOT NULL COMMENT 'Nama Samaran Siswa atau Nama Guru BK',
     full_name VARCHAR(120) DEFAULT NULL COMMENT 'Opsional, minimisasi data sesuai etika BK',
-    role ENUM('siswa', 'admin') NOT NULL DEFAULT 'siswa',
+    role VARCHAR(20) NOT NULL DEFAULT 'siswa' COMMENT 'siswa, konselor, admin (Super Admin)',
     jenjang ENUM('SMP', 'SMA') DEFAULT 'SMA',
     class_code VARCHAR(30) DEFAULT 'Umum' COMMENT 'Kode Kelas atau Kelompok',
     avatar_color VARCHAR(30) DEFAULT '#0f172a',

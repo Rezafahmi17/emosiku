@@ -15,6 +15,8 @@ const AppState = {
   adminConversations: [],
   adminUsersList: [],
   adminUserStatusFilter: "ALL",
+  adminUserRoleFilter: "ALL",
+  authPortal: "siswa",
   knownAdminPendingRequestIds: null,
   lastAdminRequestsSignature: "",
   studentRequestStatusMap: null,
@@ -25,6 +27,12 @@ const AppState = {
   breathingInterval: null,
   breathingSecondsLeft: 120,
   kamusCategoryFilter: "ALL",
+  forgotPassword: {
+    email: "",
+    resetToken: "",
+    cooldownSeconds: 0,
+    cooldownTimer: null,
+  },
 };
 
 const DEMO_USERNAMES_SET = new Set([
@@ -128,6 +136,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   renderLandingKamus();
   renderCalmStrategies();
   renderPublicDictionary();
+  setAuthPortal("siswa");
+  initForgotPasswordLinks();
 
   const savedUser = window.EmosikuAPI.getUser();
   const savedToken = window.EmosikuAPI.getToken();
@@ -159,7 +169,7 @@ function navigateTopMenu(targetSectionId) {
 
   // Jika pengguna sedang di dashboard dan mengklik Modul Layanan -> kembali ke Beranda / Chat
   if (AppState.currentUser && targetSectionId === "fitur-utama") {
-    if (AppState.currentUser.role === "admin") {
+    if (isStaffUser(AppState.currentUser)) {
       switchAdminTab("chat");
     } else {
       switchStudentTab("beranda");
@@ -362,13 +372,13 @@ function toggleHeroAuthView(mode = "login") {
   if (mode === "register") {
     loginForm.classList.add("hidden");
     regForm.classList.remove("hidden");
-    heading.textContent = "Daftar Akun Baru";
+    heading.textContent = authPortalTitle("register");
     subheading.textContent =
       "Lengkapi data berikut untuk membuat akun EMOSIKU.";
   } else {
     regForm.classList.add("hidden");
     loginForm.classList.remove("hidden");
-    heading.textContent = "Masuk ke Akun Anda";
+    heading.textContent = authPortalTitle("login");
     subheading.textContent =
       "Masukkan alamat email dan kata sandi untuk mengakses layanan EMOSIKU.";
   }
@@ -420,13 +430,13 @@ function switchAuthMode(mode) {
   if (mode === "register") {
     formLogin.classList.add("hidden");
     formReg.classList.remove("hidden");
-    title.textContent = "Daftar Akun Baru";
+    title.textContent = authPortalTitle("register");
     subtitle.textContent =
       "Lengkapi informasi di bawah ini untuk membuat akun.";
   } else {
     formReg.classList.add("hidden");
     formLogin.classList.remove("hidden");
-    title.textContent = "Masuk ke Akun Anda";
+    title.textContent = authPortalTitle("login");
     subtitle.textContent = "Masukkan alamat email dan kata sandi Anda.";
   }
 }
@@ -483,6 +493,7 @@ async function performLogin(email, password) {
       res = await window.EmosikuAPI.request("/auth/login", {
         method: "POST",
         body: JSON.stringify({
+          portal: AppState.authPortal,
           email: cleanEmail,
           username: cleanEmail,
           password,
@@ -513,6 +524,7 @@ async function performLogin(email, password) {
         res = await window.EmosikuAPI.request("/auth/login", {
           method: "POST",
           body: JSON.stringify({
+            portal: AppState.authPortal,
             email: legacyUsername,
             username: legacyUsername,
             password: candidatePwd,
@@ -534,7 +546,9 @@ async function performLogin(email, password) {
     const errMsg =
       error.message ||
       "Gagal masuk. Periksa kembali email dan kata sandi Anda.";
-    if (errMsg.toLowerCase().includes("menunggu konfirmasi")) {
+    if (errMsg.includes("Portal")) {
+      showAuthStatusNotice("rejected", "Portal Login Tidak Sesuai", errMsg);
+    } else if (errMsg.toLowerCase().includes("menunggu konfirmasi")) {
       showAuthStatusNotice(
         "pending",
         "Menunggu Konfirmasi Super Admin",
@@ -584,7 +598,7 @@ async function performRegister({
         username: email,
         password,
         alias_name,
-        role: "siswa",
+        role: AppState.authPortal === "konselor" ? "konselor" : "siswa",
         class_code,
         agreed_consent,
       }),
@@ -642,7 +656,7 @@ function logoutUser() {
 function handleLogoClick() {
   if (!AppState.currentUser) {
     window.scrollTo({ top: 0, behavior: "smooth" });
-  } else if (AppState.currentUser.role === "admin") {
+  } else if (isStaffUser(AppState.currentUser)) {
     switchAdminTab("chat");
   } else {
     switchStudentTab("beranda");
@@ -671,11 +685,11 @@ function refreshHeaderAndDashboardUserUI(user) {
 
   document.getElementById("user-display-name").textContent = user.alias_name;
   document.getElementById("user-display-role").textContent =
-    user.role === "admin"
+    isStaffUser(user)
       ? `${user.class_code || "Konselor / Admin"}`
       : `Kelas ${user.class_code || "Umum"}`;
 
-  if (user.role !== "admin") {
+  if (!isStaffUser(user)) {
     const berandaAlias = document.getElementById("beranda-alias-name");
     const berandaBadge = document.getElementById("beranda-jenjang-badge");
     const bkName = document.getElementById("bk-student-name");
@@ -701,9 +715,9 @@ function openProfileModal() {
 
   document.getElementById("profile-alias-name").value = u.alias_name || "";
   document.getElementById("profile-class-code").value =
-    u.class_code || (u.role === "admin" ? "Konselor" : "Umum");
+    u.class_code || (isStaffUser(u) ? "Konselor" : "Umum");
   document.getElementById("profile-class-label").textContent =
-    u.role === "admin" ? "Jabatan / Unit" : "Kode Kelas";
+    isStaffUser(u) ? "Jabatan / Unit" : "Kode Kelas";
 
   const emailVal =
     u.email ||
@@ -921,10 +935,11 @@ function enterRoleDashboard(user) {
 
   const siteFooter = document.getElementById("site-footer");
 
-  if (user.role === "admin") {
+  if (isStaffUser(user)) {
     if (siteFooter) siteFooter.classList.remove("footer-with-bnav");
     document.getElementById("view-student-app").classList.add("hidden");
     document.getElementById("view-admin-app").classList.remove("hidden");
+    applyStaffRoleUI(user);
     AppState.knownAdminPendingRequestIds = null;
     AppState.lastAdminRequestsSignature = "";
     switchAdminTab("chat");
@@ -958,7 +973,7 @@ function enterRoleDashboard(user) {
 
 function triggerRealtimeSyncOnFocus() {
   if (!AppState.currentUser) return;
-  if (AppState.currentUser.role === "admin") {
+  if (isStaffUser(AppState.currentUser)) {
     loadAdminConversations(true);
     loadAdminUsers(true);
     loadAdminDashboardData(true);
@@ -1852,6 +1867,12 @@ async function sendStudentChatMessage(event) {
 // 7. PANEL ADMIN / KONSELOR: MULTI-USER CHAT & DASBOR AGREGAT
 // -------------------------------------------------------------------------
 function switchAdminTab(tab) {
+  if (
+    tab === "users" &&
+    (!AppState.currentUser || AppState.currentUser.role !== "admin")
+  ) {
+    tab = "chat";
+  }
   const sections = ["chat", "users", "aggregate", "requests"];
   sections.forEach((s) => {
     const el = document.getElementById(`admin-section-${s}`);
@@ -1981,7 +2002,9 @@ function renderAdminUsersList() {
       (u.alias_name || "").toLowerCase().includes(query) ||
       (u.username || "").toLowerCase().includes(query) ||
       (u.class_code || "").toLowerCase().includes(query);
-    return matchStatus && matchQuery;
+    const roleFilter = AppState.adminUserRoleFilter || "ALL";
+    const matchRole = roleFilter === "ALL" || u.role === roleFilter;
+    return matchStatus && matchQuery && matchRole;
   });
 
   if (filtered.length === 0) {
@@ -2046,7 +2069,7 @@ function renderAdminUsersList() {
         `;
       } else {
         actionsHtml = `
-          <button type="button" onclick="openStudentChatFromRequest(${u.id})" class="px-3.5 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs transition">
+          <button type="button" onclick="openStudentChatFromRequest(${u.id})" class="${u.role === "konselor" ? "hidden " : ""}px-3.5 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs transition">
             Buka Chat
           </button>
           <button type="button" onclick="updateAdminUserStatus(${u.id}, 'rejected')" class="px-3 py-2 rounded-lg bg-white hover:bg-rose-50 text-rose-700 border border-slate-200 font-semibold text-xs transition">
@@ -2072,7 +2095,8 @@ function renderAdminUsersList() {
             <div class="space-y-1 min-w-0">
               <div class="flex flex-wrap items-center gap-2">
                 <span class="font-bold text-sm text-slate-900 hc-card">${escapeHtml(u.alias_name)}</span>
-                <span class="text-[11px] font-semibold px-2 py-0.5 rounded bg-white border border-slate-200 text-slate-700">Kelas ${escapeHtml(u.class_code)}</span>
+                <span class="text-[11px] font-semibold px-2 py-0.5 rounded bg-white border border-slate-200 text-slate-700">${u.role === "konselor" ? "Jabatan" : "Kelas"} ${escapeHtml(u.class_code)}</span>
+                <span class="text-[11px] font-bold px-2 py-0.5 rounded ${u.role === "konselor" ? "bg-indigo-50 text-indigo-800 border border-indigo-200" : "bg-sky-50 text-sky-800 border border-sky-200"}">${u.role === "konselor" ? "Konselor" : "Siswa"}</span>
                 ${statusBadgeHtml}
               </div>
               <p class="text-xs text-slate-600 truncate hc-text-muted">
@@ -2199,7 +2223,7 @@ function showAdminMobileChatRoom() {
 }
 
 async function loadAdminConversations(silent = false) {
-  if (!AppState.currentUser || AppState.currentUser.role !== "admin") return;
+  if (!AppState.currentUser || !isStaffUser(AppState.currentUser)) return;
   try {
     const res = await window.EmosikuAPI.request("/chat/admin/conversations");
     const overrides = getLocalProfileOverrides();
@@ -2420,7 +2444,7 @@ async function sendAdminChatMessage(event) {
 
 // DASBOR AGREGAT & DAFTAR PERMINTAAN KONSELING
 async function loadAdminDashboardData(silent = false) {
-  if (!AppState.currentUser || AppState.currentUser.role !== "admin") return;
+  if (!AppState.currentUser || !isStaffUser(AppState.currentUser)) return;
   const classSelectEl = document.getElementById("admin-class-filter");
   const classFilter = classSelectEl?.value || "ALL";
   const enforceRule =
@@ -2692,4 +2716,502 @@ function escapeHtml(str) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#039;");
+}
+
+// -------------------------------------------------------------------------
+// 9. PERAN PENGGUNA: PORTAL LOGIN SISWA / KONSELOR & AKSES STAF
+// -------------------------------------------------------------------------
+function isStaffUser(user) {
+  return !!user && (user.role === "admin" || user.role === "konselor");
+}
+
+function authPortalTitle(mode = "login") {
+  const isK = AppState.authPortal === "konselor";
+  if (mode === "register") {
+    return isK ? "Daftar Akun Konselor" : "Daftar Akun Siswa";
+  }
+  return isK ? "Masuk Portal Konselor" : "Masuk Portal Siswa";
+}
+
+function setAuthPortal(portal = "siswa") {
+  AppState.authPortal = portal === "konselor" ? "konselor" : "siswa";
+  const isK = AppState.authPortal === "konselor";
+
+  document.querySelectorAll(".auth-portal-btn").forEach((btn) => {
+    const active = btn.getAttribute("data-portal") === AppState.authPortal;
+    btn.className = active
+      ? "auth-portal-btn py-2 px-3 rounded-lg text-xs font-bold bg-white text-slate-900 shadow-2xs transition"
+      : "auth-portal-btn py-2 px-3 rounded-lg text-xs font-semibold text-slate-600 hover:text-slate-900 transition";
+  });
+
+  const hint = isK
+    ? "Khusus Konselor / Guru BK dan Super Admin. Akun konselor baru harus diverifikasi Super Admin sebelum dapat digunakan."
+    : "Khusus siswa. Akun siswa baru harus diverifikasi Super Admin sebelum dapat digunakan.";
+  ["hero-portal-hint", "modal-portal-hint"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.textContent = hint;
+  });
+
+  const heroReg = document.getElementById("hero-form-register");
+  const heroHeading = document.getElementById("hero-auth-heading");
+  if (heroReg && heroHeading) {
+    heroHeading.textContent = authPortalTitle(
+      heroReg.classList.contains("hidden") ? "login" : "register",
+    );
+  }
+  const modalReg = document.getElementById("form-register");
+  const modalTitle = document.getElementById("auth-modal-title");
+  if (modalReg && modalTitle) {
+    modalTitle.textContent = authPortalTitle(
+      modalReg.classList.contains("hidden") ? "login" : "register",
+    );
+  }
+
+  ["hero-reg-class", "reg-class"].forEach((id) => {
+    const input = document.getElementById(id);
+    if (!input) return;
+    const label = input.previousElementSibling;
+    if (label) label.textContent = isK ? "Jabatan / Unit" : "Kode Kelas";
+    input.placeholder = isK
+      ? "Contoh: Guru BK / Konselor"
+      : id === "reg-class"
+        ? "Contoh: XI-A"
+        : "Contoh: X-A / XI-B";
+  });
+
+  showAuthStatusNotice("clear");
+}
+
+function applyStaffRoleUI(user) {
+  const isSuperAdmin = !!user && user.role === "admin";
+  const usersTab = document.getElementById("admin-tab-btn-users");
+  if (usersTab) usersTab.style.display = isSuperAdmin ? "" : "none";
+  if (!isSuperAdmin) {
+    ["admin-pending-alert-banner", "admin-pending-users-badge"].forEach(
+      (id) => {
+        const el = document.getElementById(id);
+        if (el) el.classList.add("hidden");
+      },
+    );
+  }
+}
+
+function setAdminUserRoleFilter(role = "ALL") {
+  AppState.adminUserRoleFilter = role;
+  document.querySelectorAll(".admin-urole-btn").forEach((btn) => {
+    const r = btn.getAttribute("data-urole");
+    btn.className =
+      r === role
+        ? "admin-urole-btn shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-900 text-white transition"
+        : "admin-urole-btn shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold bg-white border border-slate-200 text-slate-600 hover:border-slate-400 transition";
+  });
+  renderAdminUsersList();
+}
+
+// -------------------------------------------------------------------------
+// 10. FITUR LUPA KATA SANDI (Forgot Password: Email -> Kode -> Sandi Baru)
+// -------------------------------------------------------------------------
+function initForgotPasswordLinks() {
+  document.querySelectorAll(".open-forgot-link").forEach((btn) => {
+    btn.onclick = () => openForgotModal();
+  });
+}
+
+function openForgotModal(prefillEmail = "") {
+  closeAuthModal();
+
+  const heroEmail = document.getElementById("hero-login-email");
+  const modalEmail = document.getElementById("login-username");
+  const candidateEmail =
+    prefillEmail ||
+    (heroEmail && heroEmail.value.trim()) ||
+    (modalEmail && modalEmail.value.trim()) ||
+    AppState.forgotPassword.email ||
+    "";
+
+  const emailInput = document.getElementById("fp-email");
+  if (emailInput && candidateEmail) {
+    emailInput.value = candidateEmail;
+  }
+
+  showForgotNotice("clear");
+  setForgotStep(1);
+
+  const modal = document.getElementById("modal-forgot");
+  if (modal) {
+    modal.classList.remove("hidden");
+    modal.classList.add("flex");
+  }
+
+  setTimeout(() => {
+    if (emailInput) emailInput.focus();
+  }, 100);
+}
+
+function closeForgotModal(returnToLogin = false) {
+  const modal = document.getElementById("modal-forgot");
+  if (modal) {
+    modal.classList.add("hidden");
+    modal.classList.remove("flex");
+  }
+  showForgotNotice("clear");
+
+  if (AppState.forgotPassword.cooldownTimer) {
+    clearInterval(AppState.forgotPassword.cooldownTimer);
+    AppState.forgotPassword.cooldownTimer = null;
+  }
+
+  if (returnToLogin) {
+    showAuthModal("login");
+  }
+}
+
+function setForgotStep(step = 1) {
+  const title = document.getElementById("fp-title");
+  const subtitle = document.getElementById("fp-subtitle");
+  const formEmail = document.getElementById("fp-form-email");
+  const formCode = document.getElementById("fp-form-code");
+  const formPassword = document.getElementById("fp-form-password");
+
+  const dot1 = document.getElementById("fp-dot-1");
+  const dot2 = document.getElementById("fp-dot-2");
+  const dot3 = document.getElementById("fp-dot-3");
+
+  const activeDotClass = "h-1 rounded-full bg-teal-600 transition";
+  const inactiveDotClass = "h-1 rounded-full bg-slate-200 transition";
+
+  if (step === 1) {
+    if (title) title.textContent = "Lupa Kata Sandi";
+    if (subtitle)
+      subtitle.textContent =
+        "Masukkan alamat email terdaftar untuk menerima 6 digit kode verifikasi.";
+    if (formEmail) formEmail.classList.remove("hidden");
+    if (formCode) formCode.classList.add("hidden");
+    if (formPassword) formPassword.classList.add("hidden");
+
+    if (dot1) dot1.className = activeDotClass;
+    if (dot2) dot2.className = inactiveDotClass;
+    if (dot3) dot3.className = inactiveDotClass;
+
+    const emailInput = document.getElementById("fp-email");
+    if (emailInput) setTimeout(() => emailInput.focus(), 100);
+  } else if (step === 2) {
+    if (title) title.textContent = "Verifikasi Kode";
+    if (subtitle)
+      subtitle.textContent = `Kode verifikasi 6 digit telah dikirim ke ${escapeHtml(AppState.forgotPassword.email)}. Masukkan kode di bawah:`;
+    if (formEmail) formEmail.classList.add("hidden");
+    if (formCode) formCode.classList.remove("hidden");
+    if (formPassword) formPassword.classList.add("hidden");
+
+    if (dot1) dot1.className = activeDotClass;
+    if (dot2) dot2.className = activeDotClass;
+    if (dot3) dot3.className = inactiveDotClass;
+
+    const codeInput = document.getElementById("fp-code");
+    if (codeInput) {
+      codeInput.value = "";
+      setTimeout(() => codeInput.focus(), 100);
+    }
+  } else if (step === 3) {
+    if (title) title.textContent = "Ganti Sandi Baru";
+    if (subtitle)
+      subtitle.textContent =
+        "Buat kata sandi baru minimal 6 karakter. Pastikan aman dan mudah Anda ingat.";
+    if (formEmail) formEmail.classList.add("hidden");
+    if (formCode) formCode.classList.add("hidden");
+    if (formPassword) formPassword.classList.remove("hidden");
+
+    if (dot1) dot1.className = activeDotClass;
+    if (dot2) dot2.className = activeDotClass;
+    if (dot3) dot3.className = activeDotClass;
+
+    const newPassInput = document.getElementById("fp-new-password");
+    const confirmPassInput = document.getElementById("fp-confirm-password");
+    if (newPassInput) newPassInput.value = "";
+    if (confirmPassInput) confirmPassInput.value = "";
+    if (newPassInput) setTimeout(() => newPassInput.focus(), 100);
+  }
+}
+
+function showForgotNotice(msg, type = "error") {
+  const el = document.getElementById("fp-notice");
+  if (!el) return;
+  if (!msg || msg === "clear") {
+    el.className = "hidden";
+    el.innerHTML = "";
+    return;
+  }
+  const colorMap = {
+    error: "bg-rose-50 text-rose-800 border-rose-200",
+    success: "bg-emerald-50 text-emerald-800 border-emerald-200",
+    info: "bg-sky-50 text-sky-800 border-sky-200",
+  };
+  const color = colorMap[type] || colorMap.error;
+  el.className = `p-3 rounded-xl border text-xs leading-relaxed ${color}`;
+  el.innerHTML = msg;
+}
+
+function startForgotCooldown(seconds = 60) {
+  AppState.forgotPassword.cooldownSeconds = seconds;
+  const btn = document.getElementById("fp-resend-btn");
+
+  if (AppState.forgotPassword.cooldownTimer) {
+    clearInterval(AppState.forgotPassword.cooldownTimer);
+  }
+
+  const updateBtn = () => {
+    if (!btn) return;
+    if (AppState.forgotPassword.cooldownSeconds > 0) {
+      btn.disabled = true;
+      btn.textContent = `Kirim ulang (${AppState.forgotPassword.cooldownSeconds}s)`;
+    } else {
+      btn.disabled = false;
+      btn.textContent = "Kirim ulang kode";
+      if (AppState.forgotPassword.cooldownTimer) {
+        clearInterval(AppState.forgotPassword.cooldownTimer);
+        AppState.forgotPassword.cooldownTimer = null;
+      }
+    }
+  };
+
+  updateBtn();
+  AppState.forgotPassword.cooldownTimer = setInterval(() => {
+    AppState.forgotPassword.cooldownSeconds -= 1;
+    updateBtn();
+  }, 1000);
+}
+
+async function handleForgotEmailSubmit(event) {
+  event.preventDefault();
+  const emailInput = document.getElementById("fp-email");
+  const email = (emailInput ? emailInput.value : "").trim().toLowerCase();
+  const btn = document.getElementById("fp-btn-email");
+
+  if (!email) {
+    showForgotNotice("Masukkan alamat email yang terdaftar.", "error");
+    return;
+  }
+
+  showForgotNotice("clear");
+  const origText = btn ? btn.textContent : "Kirim Kode Verifikasi";
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "Mengirim kode verifikasi...";
+  }
+
+  try {
+    const res = await window.EmosikuAPI.request("/auth/forgot-password", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+    });
+
+    AppState.forgotPassword.email = email;
+    setForgotStep(2);
+    startForgotCooldown(60);
+
+    if (res && res.dev_code) {
+      showForgotNotice(
+        `<strong>Mode Lokal:</strong> Kode verifikasi Anda adalah <strong>${res.dev_code}</strong>. (Gunakan kode ini untuk melanjutkan).`,
+        "info",
+      );
+    } else {
+      showForgotNotice(
+        "Kode 6 digit telah dikirim ke email Anda. Silakan periksa inbox atau folder spam.",
+        "success",
+      );
+    }
+  } catch (err) {
+    showForgotNotice(
+      err.message || "Gagal mengirim kode verifikasi. Coba lagi.",
+      "error",
+    );
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = origText;
+    }
+  }
+}
+
+function onForgotCodeInput(event) {
+  const input = event.target;
+  input.value = input.value.replace(/\D/g, "");
+  if (input.value.length === 6) {
+    handleForgotCodeSubmit();
+  }
+}
+
+async function handleForgotCodeSubmit(event) {
+  if (event) event.preventDefault();
+  const codeInput = document.getElementById("fp-code");
+  const code = (codeInput ? codeInput.value : "").replace(/\D/g, "");
+  const btn = document.getElementById("fp-btn-code");
+
+  if (code.length !== 6) {
+    showForgotNotice("Masukkan 6 digit kode verifikasi dengan benar.", "error");
+    return;
+  }
+
+  showForgotNotice("clear");
+  const origText = btn ? btn.textContent : "Verifikasi Kode";
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "Memverifikasi...";
+  }
+
+  try {
+    const res = await window.EmosikuAPI.request("/auth/verify-reset-code", {
+      method: "POST",
+      body: JSON.stringify({
+        email: AppState.forgotPassword.email,
+        code,
+      }),
+    });
+
+    AppState.forgotPassword.resetToken = res.reset_token;
+    setForgotStep(3);
+    showForgotNotice(
+      "Kode verifikasi valid. Silakan tentukan kata sandi baru Anda.",
+      "success",
+    );
+  } catch (err) {
+    showForgotNotice(err.message || "Kode verifikasi tidak valid.", "error");
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = origText;
+    }
+  }
+}
+
+async function resendForgotCode() {
+  if (AppState.forgotPassword.cooldownSeconds > 0) return;
+  const email = AppState.forgotPassword.email;
+  if (!email) {
+    setForgotStep(1);
+    return;
+  }
+
+  const btn = document.getElementById("fp-resend-btn");
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "Mengirim ulang...";
+  }
+
+  try {
+    const res = await window.EmosikuAPI.request("/auth/forgot-password", {
+      method: "POST",
+      body: JSON.stringify({ email }),
+    });
+
+    startForgotCooldown(60);
+    if (res && res.dev_code) {
+      showForgotNotice(
+        `<strong>Mode Lokal:</strong> Kode baru Anda: <strong>${res.dev_code}</strong>`,
+        "info",
+      );
+    } else {
+      showForgotNotice(
+        "Kode verifikasi baru telah dikirimkan ke email Anda.",
+        "success",
+      );
+    }
+  } catch (err) {
+    showForgotNotice(
+      err.message || "Gagal mengirim ulang kode verifikasi.",
+      "error",
+    );
+  }
+}
+
+async function handleForgotPasswordSubmit(event) {
+  event.preventDefault();
+  const newPassInput = document.getElementById("fp-new-password");
+  const confirmPassInput = document.getElementById("fp-confirm-password");
+  const btn = document.getElementById("fp-btn-password");
+
+  const newPassword = newPassInput ? newPassInput.value : "";
+  const confirmPassword = confirmPassInput ? confirmPassInput.value : "";
+
+  if (newPassword.length < 6) {
+    showForgotNotice("Kata sandi baru minimal 6 karakter.", "error");
+    return;
+  }
+
+  if (newPassword !== confirmPassword) {
+    showForgotNotice(
+      "Konfirmasi kata sandi tidak cocok. Harap masukkan kata sandi yang sama.",
+      "error",
+    );
+    return;
+  }
+
+  showForgotNotice("clear");
+  const origText = btn ? btn.textContent : "Simpan Kata Sandi Baru";
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = "Menyimpan sandi baru...";
+  }
+
+  try {
+    const res = await window.EmosikuAPI.request("/auth/reset-password", {
+      method: "POST",
+      body: JSON.stringify({
+        email: AppState.forgotPassword.email,
+        reset_token: AppState.forgotPassword.resetToken,
+        new_password: newPassword,
+      }),
+    });
+
+    const resetEmail = AppState.forgotPassword.email;
+    const userRole = res && res.role ? res.role : "siswa";
+
+    closeForgotModal();
+
+    AppState.forgotPassword = {
+      email: "",
+      resetToken: "",
+      cooldownSeconds: 0,
+      cooldownTimer: null,
+    };
+
+    if (userRole === "konselor" || userRole === "admin") {
+      setAuthPortal("konselor");
+    } else {
+      setAuthPortal("siswa");
+    }
+
+    const heroEmail = document.getElementById("hero-login-email");
+    const modalEmail = document.getElementById("login-username");
+    if (heroEmail) heroEmail.value = resetEmail;
+    if (modalEmail) modalEmail.value = resetEmail;
+
+    const heroPass = document.getElementById("hero-login-password");
+    const modalPass = document.getElementById("login-password");
+    if (heroPass) heroPass.value = "";
+    if (modalPass) modalPass.value = "";
+
+    showToast(
+      "Kata sandi berhasil diperbarui! Silakan masuk dengan kata sandi baru Anda.",
+      "success",
+    );
+
+    showAuthModal("login");
+
+    const activePassInput =
+      document.getElementById("login-password") || heroPass;
+    if (activePassInput) {
+      setTimeout(() => activePassInput.focus(), 200);
+    }
+  } catch (err) {
+    showForgotNotice(
+      err.message || "Gagal mengubah kata sandi. Silakan coba lagi.",
+      "error",
+    );
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = origText;
+    }
+  }
 }

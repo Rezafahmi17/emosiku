@@ -2,6 +2,10 @@ const jwt = require('jsonwebtoken');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'emosiku_secret_key_bkpi_2026';
 
+function isStaffRole(role) {
+    return role === 'admin' || role === 'konselor';
+}
+
 function verifyToken(req, res, next) {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -17,10 +21,21 @@ function verifyToken(req, res, next) {
     }
 }
 
+// Hanya Super Admin (verifikasi akun siswa & konselor)
 function verifyAdmin(req, res, next) {
     verifyToken(req, res, () => {
         if (req.user.role !== 'admin') {
-            return res.status(403).json({ success: false, message: 'Hanya Guru BK / Admin yang dapat mengakses fitur ini.' });
+            return res.status(403).json({ success: false, message: 'Hanya Super Admin yang dapat mengakses fitur ini.' });
+        }
+        next();
+    });
+}
+
+// Super Admin & Konselor (ruang chat, jadwal konseling, analitik agregat)
+function verifyStaff(req, res, next) {
+    verifyToken(req, res, () => {
+        if (!isStaffRole(req.user.role)) {
+            return res.status(403).json({ success: false, message: 'Hanya Konselor / Super Admin yang dapat mengakses fitur ini.' });
         }
         next();
     });
@@ -28,7 +43,8 @@ function verifyAdmin(req, res, next) {
 
 module.exports = {
     JWT_SECRET,
+    isStaffRole,
     verifyToken,
-    verifyAdmin
+    verifyAdmin,
+    verifyStaff
 };
-

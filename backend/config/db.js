@@ -195,7 +195,12 @@ async function ensureUserSchemaAndCleanDemo(dbPool) {
     return;
   }
 
-  // Skema MySQL
+  // Skema MySQL — pastikan kolom role mendukung peran 'konselor'
+  try {
+    await dbPool.query(
+      "ALTER TABLE users MODIFY role VARCHAR(20) NOT NULL DEFAULT 'siswa'",
+    );
+  } catch (e) {}
   try {
     const [cols] = await dbPool.query(
       "SHOW COLUMNS FROM users LIKE 'avatar_url'",
@@ -372,6 +377,25 @@ async function seedMySQLData(dbPool) {
   );
 }
 
+let resetsTableReady = false;
+async function ensurePasswordResetsTable(dbPool) {
+  if (resetsTableReady) return;
+  try {
+    if (dbEngine === "postgres") {
+      await dbPool.query(
+        "CREATE TABLE IF NOT EXISTS password_resets (id SERIAL PRIMARY KEY, email VARCHAR(120) NOT NULL, code_hash VARCHAR(255), token_hash VARCHAR(255), attempts INT DEFAULT 0, expires_at BIGINT NOT NULL, created_at BIGINT NOT NULL)",
+      );
+    } else {
+      await dbPool.query(
+        "CREATE TABLE IF NOT EXISTS password_resets (id INT AUTO_INCREMENT PRIMARY KEY, email VARCHAR(120) NOT NULL, code_hash VARCHAR(255), token_hash VARCHAR(255), attempts INT DEFAULT 0, expires_at BIGINT NOT NULL, created_at BIGINT NOT NULL)",
+      );
+    }
+    resetsTableReady = true;
+  } catch (e) {
+    console.warn("Info tabel password_resets:", e.message);
+  }
+}
+
 function getPool() {
   return pool;
 }
@@ -410,6 +434,7 @@ module.exports = {
   DB_CONFIG,
   initDatabase,
   ensureInitialized,
+  ensurePasswordResetsTable,
   ensureUserSchemaAndCleanDemo,
   getPool,
   getStatus,
